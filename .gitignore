@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.*
+
+# Build files
+dist/
+
+# Private user/order/support data
+kartly-backend/data/users.json
+kartly-backend/data/orders.json
+kartly-backend/data/support.json

@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Kartly Admin</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  body { font-family: -apple-system, sans-serif; background: #FBF9F6; color: #2A2A28; margin: 0; padding: 24px; }
+  h1 { font-family: Georgia, serif; color: #2B1E3D; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab { padding: 8px 16px; border-radius: 20px; border: 1px solid #B4B2A9; cursor: pointer; background: transparent; font-size: 13px; }
+  .tab.active { background: #2B1E3D; color: #FBF9F6; border-color: #2B1E3D; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #E5E2D9; vertical-align: top; }
+  th { background: #F1EFE8; }
+  #keyBox { margin-bottom: 20px; padding: 12px; background: #fff; border: 1px solid #E5E2D9; border-radius: 8px; max-width: 400px; }
+  input { padding: 8px; width: 100%; box-sizing: border-box; border: 1px solid #B4B2A9; border-radius: 6px; margin-top: 6px; }
+  button.primary { background: #2B1E3D; color: #FBF9F6; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; margin-top: 8px; }
+  button { cursor: pointer; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
+  select { padding: 4px; border-radius: 4px; }
+
+  /* Stat cards */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat-card { background: #fff; border: 1px solid #E5E2D9; border-radius: 10px; padding: 14px 16px; }
+  .stat-card .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888780; margin-bottom: 6px; }
+  .stat-card .value { font-size: 22px; font-weight: bold; color: #2B1E3D; }
+  .stat-card.earnings { background: #2B1E3D; }
+  .stat-card.earnings .label { color: #D3D1C7; }
+  .stat-card.earnings .value { color: #F2A93B; }
+
+  .chart-box { background: #fff; border: 1px solid #E5E2D9; border-radius: 10px; padding: 16px; max-width: 480px; margin-bottom: 20px; }
+
+  /* Loading spinner */
+  .loader-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 0; gap: 12px; }
+  .spinner {
+    width: 36px; height: 36px; border-radius: 50%;
+    border: 4px solid #E5E2D9; border-top-color: #2B1E3D;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader-wrap p { color: #888780; font-size: 13px; }
+</style>
+</head>
+<body>
+  <h1>Kartly Admin</h1>
+
+  <div id="keyBox">
+    <label>Admin Key (from your backend's .env file)</label>
+    <input id="adminKey" type="password" placeholder="Paste your ADMIN_KEY here" />
+    <button class="primary" onclick="saveKey()">Save &amp; Load</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('dashboard')">Dashboard</button>
+    <button class="tab" onclick="showTab('orders')">Orders</button>
+    <button class="tab" onclick="showTab('products')">Products</button>
+    <button class="tab" onclick="showTab('users')">Users</button>
+    <button class="tab" onclick="showTab('support')">Support</button>
+    <button class="tab" onclick="showTab('coupons')">Coupons</button>
+  </div>
+
+  <div id="content">Enter your admin key above to load data.</div>
+
+  <script>
+    const API = "http://localhost:4000/api";
+    let currentTab = "dashboard";
+    let chartInstance = null;
+
+    function getKey() { return localStorage.getItem("kartly_admin_key") || ""; }
+    function saveKey() {
+      localStorage.setItem("kartly_admin_key", document.getElementById("adminKey").value);
+      loadTab(currentTab);
+    }
+    document.getElementById("adminKey").value = getKey();
+
+    function showTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      event.target.classList.add("active");
+      loadTab(tab);
+    }
+
+    function showLoader(message) {
+      document.getElementById("content").innerHTML = `
+        <div class="loader-wrap">
+          <div class="spinner"></div>
+          <p>${message}</p>
+        </div>`;
+    }
+
+    async function apiGet(path) {
+      const res = await fetch(`${API}${path}`, { headers: { "x-admin-key": getKey() } });
+      if (!res.ok) throw new Error((await res.json()).error || "Request failed");
+      return res.json();
+    }
+    async function apiPut(path, body) {
+      const res = await fetch(`${API}${path}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-admin-key": getKey() },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Request failed");
+      return res.json();
+    }
+
+    async function loadTab(tab) {
+      const content = document.getElementById("content");
+      showLoader("Fetching your store's data…");
+      try {
+        if (tab === "dashboard") {
+          const [orders, users] = await Promise.all([apiGet("/admin/orders"), apiGet("/admin/users")]);
+
+          const active = orders.filter(o => o.status !== "cancelled");
+          const earnings = active.reduce((sum, o) => sum + (o.total || o.subtotal), 0);
+          const codEarnings = active.filter(o => o.paymentMethod?.type === "cod").reduce((s,o) => s + (o.total||o.subtotal), 0);
+          const upiEarnings = active.filter(o => o.paymentMethod?.type === "upi").reduce((s,o) => s + (o.total||o.subtotal), 0);
+          const cardEarnings = active.filter(o => o.paymentMethod?.type === "card").reduce((s,o) => s + (o.total||o.subtotal), 0);
+          const delivered = orders.filter(o => o.trackingStage === "delivered").length;
+          const running = orders.filter(o => ["placed","packed","shipped"].includes(o.trackingStage)).length;
+          const cancelled = orders.filter(o => o.status === "cancelled").length;
+          const pending = orders.filter(o => o.trackingStage === "placed").length;
+          const shipped = orders.filter(o => o.trackingStage === "shipped").length;
+          const pickedUp = orders.filter(o => ["packed","shipped","delivered"].includes(o.trackingStage)).length;
+
+          content.innerHTML = `
+            <div class="stat-grid">
+              <div class="stat-card earnings"><div class="label">Total Earnings</div><div class="value">₹${earnings.toLocaleString("en-IN")}</div></div>
+              <div class="stat-card"><div class="label">Cash (COD)</div><div class="value">₹${codEarnings.toLocaleString("en-IN")}</div></div>
+              <div class="stat-card"><div class="label">UPI</div><div class="value">₹${upiEarnings.toLocaleString("en-IN")}</div></div>
+              <div class="stat-card"><div class="label">Card</div><div class="value">₹${cardEarnings.toLocaleString("en-IN")}</div></div>
+              <div class="stat-card"><div class="label">Total Orders</div><div class="value">${orders.length}</div></div>
+              <div class="stat-card"><div class="label">Total Customers</div><div class="value">${users.length}</div></div>
+              <div class="stat-card"><div class="label">Picked Up</div><div class="value">${pickedUp}</div></div>
+              <div class="stat-card"><div class="label">In Transit</div><div class="value">${shipped}</div></div>
+              <div class="stat-card"><div class="label">Delivered</div><div class="value">${delivered}</div></div>
+              <div class="stat-card"><div class="label">Running (not yet delivered)</div><div class="value">${running}</div></div>
+              <div class="stat-card"><div class="label">Pending</div><div class="value">${pending}</div></div>
+              <div class="stat-card"><div class="label">Cancelled</div><div class="value">${cancelled}</div></div>
+            </div>
+            <div class="chart-box">
+              <canvas id="statusChart" height="220"></canvas>
+            </div>`;
+
+          const ctx = document.getElementById("statusChart");
+          if (chartInstance) chartInstance.destroy();
+          chartInstance = new Chart(ctx, {
+            type: "doughnut",
+            data: {
+              labels: ["Pending", "Packed/Picked up", "In Transit", "Delivered", "Cancelled"],
+              datasets: [{
+                data: [
+                  pending,
+                  orders.filter(o => o.trackingStage === "packed").length,
+                  shipped,
+                  delivered,
+                  cancelled,
+                ],
+                backgroundColor: ["#F2A93B", "#5F5E5A", "#1F7A5C", "#2B1E3D", "#C23B3B"],
+              }],
+            },
+            options: {
+              plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } } },
+            },
+          });
+
+        } else if (tab === "orders") {
+          const orders = await apiGet("/admin/orders");
+          content.innerHTML = `
+            <p style="margin-bottom:12px; font-size:14px;"><strong>Total orders: ${orders.length}</strong></p>
+            <table>
+              <tr>
+                <th>#</th><th>Items (qty)</th><th>Total</th><th>Address</th><th>Payment</th>
+                <th>Warehouse</th><th>Live Status (auto)</th><th>Manual Status</th><th>Return Request</th><th>Refund</th><th>Extras</th>
+              </tr>
+              ${orders.slice().reverse().map(o => `
+                <tr>
+                  <td>${o.orderNumber}</td>
+                  <td>${o.items.map(i => `${i.name} × ${i.qty}`).join("<br>")}</td>
+                  <td>₹${o.subtotal}</td>
+                  <td>${o.address ? `${o.address.line1}, ${o.address.city} ${o.address.pincode}<br>${o.address.phone}` : "—"}</td>
+                  <td>${o.paymentMethod ? o.paymentMethod.type.toUpperCase() : "—"}</td>
+                  <td>${o.pickupWarehouse || "—"}</td>
+                  <td><span class="pill" style="background:#F1EFE8">${o.trackingStage}</span></td>
+                  <td>
+                    <select onchange="updateStatus(${o.id}, this.value)">
+                      ${["placed","packed","shipped","delivered","cancelled"].map(s =>
+                        `<option value="${s}" ${o.status===s?"selected":""}>${s}</option>`).join("")}
+                    </select>
+                  </td>
+                  <td>
+                    ${o.returnRequest ? `
+                      <div style="font-size:11px">
+                        <strong>${o.returnRequest.status.toUpperCase()}</strong><br>
+                        Reason: ${o.returnRequest.reason}<br>
+                        ${o.returnRequest.status === 'pending' ? `
+                          <button onclick="handleReturn(${o.id}, 'approved')" style="margin-top:4px">Approve</button>
+                          <button onclick="handleReturn(${o.id}, 'rejected')">Reject</button>
+                        ` : ''}
+                      </div>
+                    ` : '—'}
+                  </td>
+                  <td>
+                    ${o.refundStatus ? `
+                      ${o.refundStatus === 'not_applicable' ? 'N/A (COD)' : `
+                        <strong>${o.refundStatus.toUpperCase()}</strong>
+                        ${o.refundStatus === 'pending' ? `<br><button onclick="handleRefund(${o.id})" style="margin-top:4px">Mark refunded now</button>` : ''}
+                      `}
+                    ` : '—'}
+                  </td>
+                  <td style="font-size:11px">
+                    ${o.giftWrap ? '🎁 Gift wrap<br>' : ''}
+                    ${o.deliverySlot ? `📅 ${o.deliverySlot.date}<br>${o.deliverySlot.time}` : ''}
+                  </td>
+                </tr>
+              `).join("")}
+            </table>`;
+
+        } else if (tab === "products") {
+          const products = await apiGet("/admin/products");
+          content.innerHTML = `
+            <table>
+              <tr><th>ID</th><th>Name</th><th>Category</th><th>Price</th><th>Rating</th><th>Tag</th></tr>
+              ${products.map(p => `
+                <tr><td>${p.id}</td><td>${p.name}</td><td>${p.category}</td><td>₹${p.price}</td><td>${p.rating}</td><td>${p.tag||"—"}</td></tr>
+              `).join("")}
+            </table>`;
+
+        } else if (tab === "users") {
+          const users = await apiGet("/admin/users");
+          content.innerHTML = `
+            <table>
+              <tr><th>Name</th><th>Email</th><th>Provider</th><th>Addresses</th><th>Joined</th></tr>
+              ${users.map(u => `
+                <tr><td>${u.name}</td><td>${u.email}</td><td>${u.provider}</td><td>${(u.addresses||[]).length}</td><td>${new Date(u.createdAt).toLocaleDateString()}</td></tr>
+              `).join("")}
+            </table>`;
+
+        } else if (tab === "support") {
+          const tickets = await apiGet("/admin/support");
+          content.innerHTML = `
+            <table>
+              <tr><th>Name</th><th>Email</th><th>Subject</th><th>Message</th><th>Order#</th><th>Date</th><th>Status</th></tr>
+              ${tickets.slice().reverse().map(t => `
+                <tr style="${t.status === 'resolved' ? 'opacity:0.5' : ''}">
+                  <td>${t.name}</td>
+                  <td>${t.email}</td>
+                  <td>${t.subject}</td>
+                  <td>${t.message}</td>
+                  <td>${t.orderNumber||"—"}</td>
+                  <td>${new Date(t.createdAt).toLocaleDateString()}</td>
+                  <td>
+                    <select onchange="updateSupportStatus(${t.id}, this.value)">
+                      <option value="open" ${t.status!=='resolved'?"selected":""}>Open</option>
+                      <option value="resolved" ${t.status==='resolved'?"selected":""}>Resolved</option>
+                    </select>
+                  </td>
+                </tr>
+              `).join("")}
+            </table>`;
+
+        } else if (tab === "coupons") {
+          const couponList = await apiGet("/admin/coupons");
+          content.innerHTML = `
+            <div style="margin-bottom:16px; display:flex; gap:8px;">
+              <input id="newCouponCode" placeholder="CODE" style="width:120px" />
+              <select id="newCouponType">
+                <option value="percent">% off</option>
+                <option value="flat">₹ off (flat)</option>
+              </select>
+              <input id="newCouponValue" type="number" placeholder="Value" style="width:80px" />
+              <button class="primary" onclick="addCoupon()">Add coupon</button>
+            </div>
+            <table>
+              <tr><th>Code</th><th>Type</th><th>Value</th><th>Active</th><th></th></tr>
+              ${couponList.map(c => `
+                <tr>
+                  <td>${c.code}</td>
+                  <td>${c.type === 'percent' ? '% off' : '₹ off'}</td>
+                  <td>${c.value}</td>
+                  <td>${c.active ? 'Yes' : 'No'}</td>
+                  <td>
+                    <button onclick="toggleCoupon('${c.code}')">${c.active ? 'Deactivate' : 'Activate'}</button>
+                    <button onclick="deleteCoupon('${c.code}')">Delete</button>
+                  </td>
+                </tr>
+              `).join("")}
+            </table>`;
+        }
+      } catch (err) {
+        content.innerHTML = `<p style="color:#C23B3B">${err.message}</p>`;
+      }
+    }
+
+    async function updateStatus(orderId, status) {
+      try {
+        await apiPut(`/admin/orders/${orderId}/status`, { status });
+        loadTab("orders");
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function updateSupportStatus(ticketId, status) {
+      try {
+        await apiPut(`/admin/support/${ticketId}/status`, { status });
+        loadTab("support");
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function handleReturn(orderId, status) {
+      try {
+        await apiPut(`/admin/orders/${orderId}/return-status`, { status });
+        loadTab("orders");
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function handleRefund(orderId) {
+      try {
+        await apiPut(`/admin/orders/${orderId}/refund-status`, { status: "processed" });
+        loadTab("orders");
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function addCoupon() {
+      const code = document.getElementById("newCouponCode").value;
+      const type = document.getElementById("newCouponType").value;
+      const value = Number(document.getElementById("newCouponValue").value);
+      try {
+        const res = await fetch(`${API}/admin/coupons`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-admin-key": getKey() },
+          body: JSON.stringify({ code, type, value }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || "Failed");
+        loadTab("coupons");
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function toggleCoupon(code) {
+      try {
+        await apiPut(`/admin/coupons/${code}/toggle`, {});
+        loadTab("coupons");
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function deleteCoupon(code) {
+      try {
+        await fetch(`${API}/admin/coupons/${code}`, { method: "DELETE", headers: { "x-admin-key": getKey() } });
+        loadTab("coupons");
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    if (getKey()) loadTab("dashboard");
+  </script>
+</body>
+</html>
