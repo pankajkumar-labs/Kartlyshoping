@@ -66,7 +66,11 @@
     const API = "http://localhost:4000/api";
     let currentTab = "dashboard";
     let chartInstance = null;
-
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
     function getKey() { return localStorage.getItem("kartly_admin_key") || ""; }
     function saveKey() {
       localStorage.setItem("kartly_admin_key", document.getElementById("adminKey").value);
@@ -85,7 +89,7 @@
       document.getElementById("content").innerHTML = `
         <div class="loader-wrap">
           <div class="spinner"></div>
-          <p>${message}</p>
+          <<p>${esc(message)}</p>
         </div>`;
     }
 
@@ -176,9 +180,9 @@
               ${orders.slice().reverse().map(o => `
                 <tr>
                   <td>${o.orderNumber}</td>
-                  <td>${o.items.map(i => `${i.name} × ${i.qty}`).join("<br>")}</td>
+                  <td>${o.items.map(i => `${esc(i.name)} × ${i.qty}`).join("<br>")}</td>
                   <td>₹${o.subtotal}</td>
-                  <td>${o.address ? `${o.address.line1}, ${o.address.city} ${o.address.pincode}<br>${o.address.phone}` : "—"}</td>
+                  <td>${o.address ? `${esc(o.address.line1)}, ${esc(o.address.city)} ${esc(o.address.pincode)}<br>${esc(o.address.phone)}` : "—"}</td>
                   <td>${o.paymentMethod ? o.paymentMethod.type.toUpperCase() : "—"}</td>
                   <td>${o.pickupWarehouse || "—"}</td>
                   <td><span class="pill" style="background:#F1EFE8">${o.trackingStage}</span></td>
@@ -192,7 +196,7 @@
                     ${o.returnRequest ? `
                       <div style="font-size:11px">
                         <strong>${o.returnRequest.status.toUpperCase()}</strong><br>
-                        Reason: ${o.returnRequest.reason}<br>
+                        Reason: ${esc(o.returnRequest.reason)}<br>
                         ${o.returnRequest.status === 'pending' ? `
                           <button onclick="handleReturn(${o.id}, 'approved')" style="margin-top:4px">Approve</button>
                           <button onclick="handleReturn(${o.id}, 'rejected')">Reject</button>
@@ -222,7 +226,7 @@
             <table>
               <tr><th>ID</th><th>Name</th><th>Category</th><th>Price</th><th>Rating</th><th>Tag</th></tr>
               ${products.map(p => `
-                <tr><td>${p.id}</td><td>${p.name}</td><td>${p.category}</td><td>₹${p.price}</td><td>${p.rating}</td><td>${p.tag||"—"}</td></tr>
+                <tr><td>${p.id}</td><td>${esc(p.name)}</td><td>${esc(p.category)}</td><td>₹${p.price}</td><td>${p.rating}</td><td>${esc(p.tag||"—")}</td></tr>
               `).join("")}
             </table>`;
 
@@ -232,7 +236,7 @@
             <table>
               <tr><th>Name</th><th>Email</th><th>Provider</th><th>Addresses</th><th>Joined</th></tr>
               ${users.map(u => `
-                <tr><td>${u.name}</td><td>${u.email}</td><td>${u.provider}</td><td>${(u.addresses||[]).length}</td><td>${new Date(u.createdAt).toLocaleDateString()}</td></tr>
+                <tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td>${u.provider}</td><td>${(u.addresses||[]).length}</td><td>${new Date(u.createdAt).toLocaleDateString()}</td></tr>
               `).join("")}
             </table>`;
 
@@ -243,11 +247,11 @@
               <tr><th>Name</th><th>Email</th><th>Subject</th><th>Message</th><th>Order#</th><th>Date</th><th>Status</th></tr>
               ${tickets.slice().reverse().map(t => `
                 <tr style="${t.status === 'resolved' ? 'opacity:0.5' : ''}">
-                  <td>${t.name}</td>
-                  <td>${t.email}</td>
-                  <td>${t.subject}</td>
-                  <td>${t.message}</td>
-                  <td>${t.orderNumber||"—"}</td>
+                  <td>${esc(t.name)}</td>
+                  <td>${esc(t.email)}</td>
+                  <td>${esc(t.subject)}</td>
+                  <td>${esc(t.message)}</td>
+                  <td>${esc(t.orderNumber||"—")}</td>
                   <td>${new Date(t.createdAt).toLocaleDateString()}</td>
                   <td>
                     <select onchange="updateSupportStatus(${t.id}, this.value)">
@@ -275,7 +279,7 @@
               <tr><th>Code</th><th>Type</th><th>Value</th><th>Active</th><th></th></tr>
               ${couponList.map(c => `
                 <tr>
-                  <td>${c.code}</td>
+                  <td>${esc(c.code)}</td>
                   <td>${c.type === 'percent' ? '% off' : '₹ off'}</td>
                   <td>${c.value}</td>
                   <td>${c.active ? 'Yes' : 'No'}</td>
@@ -288,7 +292,7 @@
             </table>`;
         }
       } catch (err) {
-        content.innerHTML = `<p style="color:#C23B3B">${err.message}</p>`;
+        content.innerHTML = `<p style="color:#C23B3B">${esc(err.message)}</p>`;
       }
     }
 

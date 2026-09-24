@@ -7,14 +7,22 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
 const { v4: uuidv4 } = require("uuid");
-
+const nodemailer = require("nodemailer");
 const app = express();
 const PORT = process.env.PORT || 4000;
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
-const ADMIN_KEY = process.env.ADMIN_KEY || "admin-dev-key";
+if (!process.env.JWT_SECRET || !process.env.ADMIN_KEY) {
+  throw new Error("JWT_SECRET aur ADMIN_KEY .env file mein set karo");
+}
+const JWT_SECRET = process.env.JWT_SECRET;
+const ADMIN_KEY = process.env.ADMIN_KEY;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
-
+const mailer = process.env.EMAIL_USER && process.env.EMAIL_PASS
+  ? nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    })
+  : null;
 app.use(cors({
   origin: [
     "http://localhost:5173",
@@ -320,28 +328,35 @@ app.post("/api/auth/login", async (req, res) => {
   if (!ok) return res.status(401).json({ error: "Invalid email or password" });
   res.json({ user: publicUser(user), token: signToken(user) });
 });
-// Forgot password — since no real email service is connected, the reset code
-// is printed to this terminal (simulating an email). In a real app, you'd
-// send this code via an email service instead of console.log.
-app.post("/api/auth/forgot-password", (req, res) => {
+// Forgot password — code user ke registered email par bheja jata hai.
+app.post("/api/auth/forgot-password", async (req, res) => {
   const { email } = req.body;
   const user = users.find((u) => u.email.toLowerCase() === (email || "").toLowerCase());
 
-  // Always respond the same way, whether or not the email exists — this
-  // avoids leaking which emails are registered.
-  let demoCode = null;
   if (user && user.passwordHash) {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     user.resetCode = code;
     user.resetExpires = Date.now() + 15 * 60 * 1000; // 15 minutes
     saveUsers();
-    console.log(`\n🔑 Password reset code for ${user.email}: ${code} (valid 15 min)\n`);
-    // TEMPORARY: sending the code back in the response so it can be shown
-    // on-screen for demo purposes. Remove "demoCode" once real email sending
-    // is set up — a real app should NEVER return the code to the client.
-    demoCode = code;
+
+    if (mailer) {
+      try {
+        await mailer.sendMail({
+          from: `"Kartly" <${process.env.EMAIL_USER}>`,
+          to: user.email,
+          subject: "Kartly password reset code",
+          text: `Aapka password reset code: ${code}\nYe 15 minute tak valid hai. Agar aapne request nahi ki, to is email ko ignore karein.`,
+        });
+      } catch (e) {
+        console.error("Email send failed:", e.message);
+      }
+    } else {
+      console.log(`(Email set nahi hai) Reset code for ${user.email}: ${code}`);
+    }
   }
-  res.json({ message: "If that email exists, a reset code has been sent.", demoCode });
+
+  // Hamesha same jawab, chahe email registered ho ya nahi.
+  res.json({ message: "If that email exists, a reset code has been sent." });
 });
 
 app.post("/api/auth/reset-password", async (req, res) => {

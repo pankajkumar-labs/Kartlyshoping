@@ -283,15 +283,9 @@ function AuthModal({ onClose, onAuthed }) {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Something went wrong");
-        // TEMPORARY: showing the code on screen since real email isn't set up yet.
-        if (data.demoCode) {
-          setInfoMsg(`Demo mode — no real email is sent. Your reset code is: ${data.demoCode}`);
-          setResetCode(data.demoCode);
-        } else {
-          setInfoMsg("If an account exists with that email, you'll see a code above (demo mode).");
-        }
-        setMode("reset");
-        return;
+       setInfoMsg("Agar ye email registered hai to reset code bhej diya gaya hai. Spam folder bhi check karein.");
+setMode("reset");
+return;
       }
 
       if (mode === "reset") {
