@@ -25,7 +25,18 @@ import {
 const API_BASE = "http://localhost:4000/api";
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 
-const CATEGORIES = ["All", "Electronics", "Home & Kitchen", "Fashion", "Grocery"];
+const CATEGORIES = [
+  "All", "beauty", "fragrances", "furniture", "groceries", "home-decoration",
+  "kitchen-accessories", "laptops", "mens-shirts", "mens-shoes", "mens-watches",
+  "mobile-accessories", "motorcycle", "skin-care", "smartphones",
+  "sports-accessories", "sunglasses", "tablets", "tops", "vehicle",
+  "womens-bags", "womens-dresses", "womens-jewellery", "womens-shoes", "womens-watches",
+];
+
+function formatCategoryLabel(cat) {
+  if (cat === "All") return "All";
+  return cat.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
 // Maps each default product id to a real-photo keyword (via a free keyword-based
 // photo service) so images actually look like the product, not random photos.
 // If you add new products via the admin API, add their id here too — otherwise
@@ -58,9 +69,9 @@ const IMAGE_KEYWORDS = {
   25: "table-lamp",
 };
 
-function getProductImages(id) {
-  const keyword = IMAGE_KEYWORDS[id] || "product";
-  return [1, 2, 3].map((lock) => `https://loremflickr.com/600/600/${keyword}?lock=${id * 10 + lock}`);
+function getProductImages(product) {
+  if (product && product.image) return [product.image];
+  return [`https://picsum.photos/seed/kartly${product?.id || 0}/600/600`];
 }
 function getTrackingStage(order) {
   if (order.status === "cancelled") return "cancelled";
@@ -120,7 +131,7 @@ function ProductDetailModal({ product, sessionId, qty, setQty, onClose, onAdded 
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
   const [activeImg, setActiveImg] = useState(0);
-  const images = getProductImages(product.id);
+  const images = getProductImages(product);
   useEffect(() => {
     setLoading(true);
     setAdded(false);
@@ -994,7 +1005,7 @@ function WishlistPanel({ items, onRemove, onAddToCart, onClose }) {
           ) : (
             items.map((p) => (
               <div key={p.id} className="flex items-center gap-3 py-3 border-b" style={{ borderColor: "#E5E2D9" }}>
-                <img src={getProductImages(p.id)[0]} alt={p.name} className="w-14 h-14 rounded-md object-cover" />
+                <img src={getProductImages(p)[0]} alt={p.name} className="w-14 h-14 rounded-md object-cover" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate" style={{ color: "#2A2A28" }}>{p.name}</p>
                   <PriceTag price={p.price} />
@@ -1402,7 +1413,7 @@ const applyCoupon = () => {
               className="text-sm px-3.5 py-1.5 rounded-full border transition-colors"
               style={category === c ? { background: "#2B1E3D", color: "#FBF9F6", borderColor: "#2B1E3D" } : { background: "transparent", color: "#2B1E3D", borderColor: "#B4B2A9" }}
             >
-              {c}
+              {formatCategoryLabel(c)}
             </button>
           ))}
         </div>
@@ -1425,7 +1436,7 @@ const applyCoupon = () => {
                   className="aspect-square flex items-center justify-center relative cursor-pointer"
                   style={{ background: "#F1EFE8" }}
                 >
-                  <img src={getProductImages(p.id)[0]} alt={p.name} className="w-full h-full object-cover" />
+                  <img src={getProductImages(p)[0]} alt={p.name} className="w-full h-full object-cover" />
                   {p.tag && (
                     <span className="absolute top-2 left-2 text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-sm" style={{ background: p.tag === "Sale" ? "#C23B3B" : "#1F7A5C", color: "#FBF9F6" }}>
                       {p.tag}
@@ -1440,7 +1451,7 @@ const applyCoupon = () => {
                   </button>
                 </div>
                 <div className="p-3 flex flex-col gap-1.5 flex-1">
-                  <span className="text-[11px] uppercase tracking-wide" style={{ color: "#888780" }}>{p.category}</span>
+                  <span className="text-[11px] uppercase tracking-wide" style={{ color: "#888780" }}>{formatCategoryLabel(p.category)}</span>
                   <h3
                     onClick={() => { setDetailProduct(p); setDetailQty(1); }}
                     className="text-sm font-medium leading-snug cursor-pointer hover:underline"
@@ -1545,7 +1556,7 @@ const applyCoupon = () => {
                   ) : (
                     cartItems.map((item) => (
                       <div key={item.id} className="flex items-center gap-3 py-3 border-b" style={{ borderColor: "#E5E2D9" }}>
-                        <img src={getProductImages(item.id)[0]} alt={item.name} className="w-14 h-14 rounded-md object-cover" />
+                        <img src={getProductImages(item)[0]} alt={item.name} className="w-14 h-14 rounded-md object-cover" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate" style={{ color: "#2A2A28" }}>{item.name}</p>
                           <PriceTag price={item.price} />
